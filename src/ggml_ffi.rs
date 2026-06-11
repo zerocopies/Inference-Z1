@@ -104,6 +104,7 @@ extern "C" {
 
     // Backend
     pub fn ggml_backend_cpu_init() -> ggml_backend_t;
+    pub fn ggml_backend_cpu_set_n_threads(backend: ggml_backend_t, n_threads: c_int);
     pub fn ggml_backend_free(backend: ggml_backend_t);
     pub fn ggml_backend_graph_compute(backend: ggml_backend_t, cgraph: *mut ggml_cgraph) -> c_int;
     pub fn ggml_backend_alloc_buffer(backend: ggml_backend_t, size: usize) -> ggml_backend_buffer_t;

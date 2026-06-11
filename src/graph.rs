@@ -210,6 +210,11 @@ impl LlamaGraph {
         let hp      = LlamaHparams::from_model(model);
         let backend = unsafe { ffi::ggml_backend_cpu_init() };
         if backend.is_null() { bail!("[Z.1 Graph] ggml_backend_cpu_init failed"); }
+        let n_threads = std::thread::available_parallelism()
+        .map(|n| n.get() as c_int)
+        .unwrap_or(4);
+        unsafe { ffi::ggml_backend_cpu_set_n_threads(backend, 2); }
+        log::info!("[Z.1 Graph] threads={}", n_threads);
         log::info!("[Z.1 Graph] layers={} embd={} heads={}/{} ff={} rot={} freq_base={}",
             hp.n_layer, hp.n_embd, hp.n_head, hp.n_head_kv, hp.n_ff, hp.n_rot, hp.freq_base);
         // Pass backend so KV tensors land in a backend-registered buffer

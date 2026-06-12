@@ -28,7 +28,7 @@ use std::process;
 
 use gguf::{GgufHeader, GgufValue};
 use graph::ForwardPass;
-use generate::{generate, GenerateConfig, Session};
+use generate::{generate, generate_turn, GenerateConfig, Session};
 use loader::MappedModel;
 use tokenizer::Tokenizer;
 use logits::SamplingConfig;
@@ -232,9 +232,13 @@ fn run_chat(
     tok: &Tokenizer,
     cfg: &GenerateConfig,
 ) {
-    println!("[Z.1] Interactive chat — type your message, Enter to send, Ctrl-C to exit.\n");
+    println!("[Z.1] Interactive chat — type your message, Enter to send, Ctrl-C to exit.");
+    println!("[Z.1] Conversation context: {} tokens. Use /reset to start a new conversation.\n",
+        fwd.kv.n_ctx);
+
     let stdin = io::stdin();
-    let mut _session = Session::new(cfg.context_len);
+    let mut session = Session::new(cfg.context_len);
+
     loop {
         print!("You: ");
         let _ = io::stdout().flush();
@@ -245,12 +249,27 @@ fn run_chat(
         }
         let trimmed = line.trim();
         if trimmed.is_empty() { continue; }
-        if trimmed == "/reset" { _session = Session::new(cfg.context_len); eprintln!("[Z.1] Context reset."); continue; }
+
+        if trimmed == "/reset" {
+            fwd.reset_kv();
+            session = Session::new(cfg.context_len);
+            eprintln!("[Z.1] Context reset. Starting a new conversation.");
+            continue;
+        }
         if trimmed == "/quit" || trimmed == "/exit" { println!("[Z.1] Goodbye."); break; }
+
         print!("Z.1:  ");
         let _ = io::stdout().flush();
-        match generate(trimmed, fwd, model, tok, cfg) {
-            Ok(_) => println!(),
+
+        match generate_turn(trimmed, session.turn_count, fwd, model, tok, cfg) {
+            Ok(_) => {
+                println!();
+                session.record_turn();
+            }
+            Err(generate::GenerateError::ContextFull { used, max }) => {
+                eprintln!("\n[Z.1] Conversation context full ({used}/{max} tokens).");
+                eprintln!("[Z.1] Use /reset to start a new conversation.");
+            }
             Err(e) => eprintln!("\n[Z.1] error: {e}"),
         }
     }

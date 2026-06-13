@@ -114,6 +114,31 @@ fn run_generation(
     tok: &Tokenizer,
     cfg: &GenerateConfig,
 ) -> Result<GenerateStats, GenerateError> {
+    let (stats, _text) = run_generation_inner(turn_ids, fwd, model, tok, cfg, false)?;
+    Ok(stats)
+}
+
+/// Like `run_generation`, but also returns the decoded text of the generated
+/// tokens and suppresses `[Z.1 DEBUG]` lines + streaming to stdout. Used by
+/// the bench/dev-harness for correctness checks (e.g. "does it say Paris?").
+pub fn run_generation_captured(
+    turn_ids: &[u32],
+    fwd: &mut ForwardPass,
+    model: &MappedModel,
+    tok: &Tokenizer,
+    cfg: &GenerateConfig,
+) -> Result<(GenerateStats, String), GenerateError> {
+    run_generation_inner(turn_ids, fwd, model, tok, cfg, true)
+}
+
+fn run_generation_inner(
+    turn_ids: &[u32],
+    fwd: &mut ForwardPass,
+    model: &MappedModel,
+    tok: &Tokenizer,
+    cfg: &GenerateConfig,
+    quiet: bool,
+) -> Result<(GenerateStats, String), GenerateError> {
 
     if turn_ids.is_empty() { return Err(GenerateError::EmptyPrompt); }
 
@@ -127,9 +152,11 @@ fn run_generation(
 
     let prompt_t0 = Instant::now();
 
-    eprint!("[Z.1 DEBUG] turn tokens ({}): ", turn_ids.len());
-    for id in turn_ids.iter() { eprint!("{} ", id); }
-    eprintln!();
+    if !quiet {
+        eprint!("[Z.1 DEBUG] turn tokens ({}): ", turn_ids.len());
+        for id in turn_ids.iter() { eprint!("{} ", id); }
+        eprintln!();
+    }
     let prompt_token_count = turn_ids.len();
 
     // Prefill appends at fwd.kv.head — existing history is preserved.
@@ -139,12 +166,15 @@ fn run_generation(
     let mut rng = rng_seed_from_time();
     let mut recent_tokens: Vec<u32> = Vec::new();
     let mut next_token = sample_token(&mut logits, &cfg.sampling, &recent_tokens, &mut rng)?;
-    eprintln!("[Z.1 DEBUG] first token id: {} decode: {:?}", next_token, tok.decode_one(next_token));
+    if !quiet {
+        eprintln!("[Z.1 DEBUG] first token id: {} decode: {:?}", next_token, tok.decode_one(next_token));
+    }
 
     let gen_t0 = Instant::now();
     let mut generated = 0usize;
     let stdout = io::stdout();
-    println!();
+    let mut text = String::new();
+    if !quiet { println!(); }
 
     loop {
         if tok.is_eos(next_token) { break; }
@@ -152,9 +182,13 @@ fn run_generation(
         if fwd.kv.head >= n_ctx { break; } // cache full — stop gracefully
 
         if let Some(piece) = tok.decode_one(next_token) {
-            let mut handle = stdout.lock();
-            handle.write_all(piece.as_bytes())?;
-            handle.flush()?;
+            if quiet {
+                text.push_str(&piece);
+            } else {
+                let mut handle = stdout.lock();
+                handle.write_all(piece.as_bytes())?;
+                handle.flush()?;
+            }
         }
 
         recent_tokens.push(next_token);
@@ -170,8 +204,8 @@ fn run_generation(
     let stats = GenerateStats { prompt_tokens: prompt_token_count, generated_tokens: generated,
         prompt_ms, generate_ms };
 
-    if cfg.print_timing { eprintln!("{stats}"); }
-    Ok(stats)
+    if cfg.print_timing && !quiet { eprintln!("{stats}"); }
+    Ok((stats, text))
 }
 
 // ── Single-shot generation ──────────────────────────────────────────────────

@@ -1,26 +1,25 @@
 // main.rs — Z.1 inference engine entry point
 //
 // CLI modes:
-//   z1 --prompt "your question"          — single-shot generation (B1 path)
-//   z1 --chat                            — interactive multi-turn REPL (B1 path)
+//   z1 --prompt "your question"          — single-shot generation
+//   z1 --chat                            — interactive multi-turn chat with
+//                                           persistent KV cache across turns
 //   z1 --bench                           — benchmark harness (reports tok/s)
 //   z1 --model <path>                    — override default model path
 //
-// The Option A (llama.cpp loader) path is retired. All inference now goes
-// through the B1 zero-copy mmap path: gguf.rs → loader.rs → graph.rs →
-// logits.rs + tokenizer.rs → generate.rs.
+// Pipeline: gguf.rs → loader.rs → graph.rs → logits.rs + tokenizer.rs → generate.rs
+// Zero-copy: weights are memory-mapped directly into ggml tensors, never
+// copied onto the heap. KV cache uses a persistent decode graph (built once,
+// reused every token) for O(1) per-step decoding.
 
 mod gguf;
 mod ggml_ffi;
-mod llama_ffi;
 mod loader;
 mod graph;
 mod mapper;
 mod logits;
 mod tokenizer;
 mod generate;
-mod engine;    // kept for the benchmark harness; can be removed later
-mod harness;
 
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
@@ -91,7 +90,7 @@ fn parse_args() -> Args {
 
 fn print_help() {
     println!(r#"
-Z.1 — Local LLM inference engine (Llama 3.1 8B, zero-copy B1 path)
+Z.1 — Local LLM inference engine (Llama 3.1 8B, zero-copy inference engine)
 
 USAGE:
     z1 [OPTIONS]
@@ -117,7 +116,7 @@ EXAMPLES:
 }
 
 /// Load the GGUF file, build the tokenizer from vocab tables, prepare the
-/// B1 forward pass. All weight data stays in the mmap — zero heap copies.
+/// Forward pass. All weight data stays in the mmap — zero heap copies.
 fn load_model(path: &PathBuf, args: &Args) -> Result<(GgufHeader, MappedModel, GenerateConfig), Box<dyn std::error::Error>> {
     eprint!("[Z.1] Loading model from {} … ", path.display());
     let _ = io::stderr().flush();
@@ -283,28 +282,94 @@ fn run_bench(
     tok: &Tokenizer,
     cfg: &GenerateConfig,
 ) {
-    const BENCH_PROMPT: &str = "Write a detailed explanation of how transformer attention works.";
-    const BENCH_RUNS: usize = 3;
-    eprintln!("[Z.1] Benchmark: {BENCH_RUNS} runs");
+    const REGRESSION_PROMPT: &str = "The capital of France is";
+    const SPEED_PROMPT: &str = "Explain transformer attention in one paragraph.";
+    const SPEED_RUNS: usize = 3;
+
+    eprintln!("[Z.1] Dev harness (Llama 3.1 8B baseline)");
+    eprintln!();
+
+    // ── Phase 1: correctness regression ────────────────────────────────────────
+    // First token should be "Paris" at low temperature. If this fails, the
+    // forward pass itself is broken — no point measuring speed.
+    eprintln!("── Phase 1: regression ──");
+    eprint!("  prompt: \"{REGRESSION_PROMPT}\" … ");
+    let _ = io::stderr().flush();
+
+    fwd.reset_kv();
+    let regression_cfg = GenerateConfig {
+        max_new_tokens: 5,
+        print_timing: false,
+        chat_template: true,
+        sampling: SamplingConfig { temperature: 0.01, ..cfg.sampling.clone() },
+        ..cfg.clone()
+    };
+    let regression_ids = crate::generate::build_chat_tokens(REGRESSION_PROMPT, tok);
+    match crate::generate::run_generation_captured(&regression_ids, fwd, model, tok, &regression_cfg) {
+        Ok((stats, text)) => {
+            let pass = text.to_ascii_lowercase().contains("paris");
+            eprintln!(
+                "text={text:?} prefill={:.0}ms {}",
+                stats.prompt_ms,
+                if pass { "PASS" } else { "FAIL" }
+            );
+            if !pass {
+                eprintln!("[Z.1] Regression failed — fix before tuning speed.");
+                return;
+            }
+        }
+        Err(e) => {
+            eprintln!("FAIL ({e})");
+            return;
+        }
+    }
+    fwd.reset_kv();
+
+    // ── Phase 2: decode throughput ──────────────────────────────────────────────
+    // Quiet runs, comparable across commits. 32 tokens each, no chat template
+    // (raw continuation) so prefill length is consistent.
+    eprintln!();
+    eprintln!("── Phase 2: decode speed ({SPEED_RUNS} runs, 32 tokens) ──");
     let mut all_tps: Vec<f64> = Vec::new();
-    for run in 1..=BENCH_RUNS {
-        eprint!("  Run {run}/{BENCH_RUNS} … ");
+    let mut all_prefill_ms: Vec<f64> = Vec::new();
+
+    for run in 1..=SPEED_RUNS {
+        eprint!("  run {run}/{SPEED_RUNS} … ");
         let _ = io::stderr().flush();
-        let bench_cfg = GenerateConfig { max_new_tokens: 128, print_timing: false, ..cfg.clone() };
-        match generate(BENCH_PROMPT, fwd, model, tok, &bench_cfg) {
-            Ok(stats) => {
+
+        fwd.reset_kv();
+        let speed_cfg = GenerateConfig {
+            max_new_tokens: 32,
+            print_timing: false,
+            chat_template: false,
+            ..cfg.clone()
+        };
+        let speed_ids = tok.encode(SPEED_PROMPT, speed_cfg.add_bos);
+        match crate::generate::run_generation_captured(&speed_ids, fwd, model, tok, &speed_cfg) {
+            Ok((stats, _text)) => {
                 let tps = stats.tokens_per_second();
-                eprintln!("{tps:.2} tok/s ({} tokens in {:.0}ms)", stats.generated_tokens, stats.generate_ms);
+                eprintln!(
+                    "{tps:.2} tok/s decode | prefill {:.0}ms | {} tokens",
+                    stats.prompt_ms, stats.generated_tokens
+                );
                 all_tps.push(tps);
+                all_prefill_ms.push(stats.prompt_ms);
             }
             Err(e) => eprintln!("ERROR: {e}"),
         }
     }
+    fwd.reset_kv();
+
     if !all_tps.is_empty() {
-        let mean = all_tps.iter().sum::<f64>() / all_tps.len() as f64;
-        let min  = all_tps.iter().cloned().fold(f64::MAX, f64::min);
-        let max  = all_tps.iter().cloned().fold(f64::MIN, f64::max);
-        println!("\n[Z.1] Benchmark — Mean: {mean:.2} tok/s  Min: {min:.2}  Max: {max:.2}");
+        let mean_tps = all_tps.iter().sum::<f64>() / all_tps.len() as f64;
+        let min_tps  = all_tps.iter().cloned().fold(f64::MAX, f64::min);
+        let max_tps  = all_tps.iter().cloned().fold(f64::MIN, f64::max);
+        let mean_prefill = all_prefill_ms.iter().sum::<f64>() / all_prefill_ms.len() as f64;
+
+        println!();
+        println!("[Z.1] Regression: PASS");
+        println!("[Z.1] Decode     — mean: {mean_tps:.2} tok/s  min: {min_tps:.2}  max: {max_tps:.2}");
+        println!("[Z.1] Prefill    — mean: {mean_prefill:.0}ms");
     }
 }
 
@@ -333,8 +398,8 @@ fn main() {
         Err(e) => { eprintln!("[Z.1] Failed to build tokenizer: {e}"); process::exit(1); }
     };
 
-    // ── Build B1 forward pass from mmap tensors ───────────────────────────────
-    eprint!("[Z.1] Initialising B1 forward pass … ");
+    // ── Build forward pass from mmap tensors ───────────────────────────────
+    eprint!("[Z.1] Initialising forward pass … ");
     let _ = io::stderr().flush();
 
     let mut fwd = match ForwardPass::new(&model) {

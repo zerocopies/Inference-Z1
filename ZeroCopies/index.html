@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ZeroCopies</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<style>
+  body { background: #1F1F1F; color: #E5E7EB; overflow: hidden; font-family: 'Inter', sans-serif; }
+  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+  .screen { display: none; }
+  .screen.active { display: flex; }
+
+  @keyframes levitate {
+    0%, 100% { transform: translateY(0px); }
+    25% { transform: translateY(-4px); }
+    50% { transform: translateY(-1px); }
+    75% { transform: translateY(-7px); }
+  }
+  @keyframes glow-green-orange {
+    0%, 100% { box-shadow: 0 0 8px rgba(34,197,94,0.3), 0 0 16px rgba(34,197,94,0.1); }
+    50% { box-shadow: 0 0 14px rgba(249,115,22,0.4), 0 0 28px rgba(249,115,22,0.15); }
+  }
+  @keyframes ring-flash {
+    0% { box-shadow: 0 0 0 0 rgba(250,204,21,0.5); }
+    50% { box-shadow: 0 0 0 6px rgba(250,204,21,0.2); }
+    100% { box-shadow: 0 0 0 0 rgba(250,204,21,0); }
+  }
+  @keyframes flame-flicker {
+    0%, 100% { d:path("M50 18C48 14 44 8 50 5C56 8 52 14 50 18Z"); opacity:0.8; }
+    25% { d:path("M50 17C46 12 42 7 50 4C58 7 54 12 50 17Z"); opacity:1; }
+    50% { d:path("M50 19C49 15 45 9 50 6C55 9 51 15 50 19Z"); opacity:0.7; }
+    75% { d:path("M50 17C47 13 43 8 50 5C57 8 53 13 50 17Z"); opacity:0.9; }
+  }
+  @keyframes fire-pulse {
+    0%, 100% { r:14; opacity:0.4; }
+    50% { r:19; opacity:0.15; }
+  }
+  @keyframes slide-up {
+    from { opacity:0; transform:translateY(4px); }
+    to { opacity:1; transform:translateY(0); }
+  }
+  .ghost-levitate { animation: levitate 3.5s ease-in-out infinite; }
+  .online-glow { animation: glow-green-orange 2.5s ease-in-out infinite; }
+  .pin-flash { animation: ring-flash 0.5s ease-out; }
+  .ghost-flame { animation: flame-flicker 0.8s ease-in-out infinite; transform-origin:50px 10px; }
+  .ghost-fire-ring { animation: fire-pulse 2s ease-in-out infinite; }
+  .msg-enter { animation: slide-up 0.25s ease-out; }
+  .loading-bar-fill {
+    background: linear-gradient(90deg, #E9D5FF, #F97316, #FBBF24);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  @keyframes fadeOut {
+    to { opacity:0; transform:translateY(-4px); }
+  }
+  .fade-out-text { animation: fadeOut 0.4s ease-out forwards; }
+</style>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: { extend: {
+      colors: {
+        "deep-purple": "#5B21B6",
+        "dreamy-pink": "#FBCFE8",
+        "lavender": "#E9D5FF",
+        "celestial-light": "#60A5FA",
+        "celestial-deep": "#3B82F6",
+        "mint": "#22C55E",
+        "blaze": "#F97316",
+        "sunny": "#FBBF24",
+        "soft-grey": "#9CA3AF",
+        "dark-grey": "#374151",
+        "surface": "#FFFFFF",
+        "surface-muted": "#F9FAFB",
+      }
+    }}
+  }
+</script>
+</head>
+<body class="h-screen w-full overflow-hidden" style="background:#1F1F1F;">
+
+<template id="ghost-template">
+  <svg viewBox="0 0 100 130" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path class="ghost-flame-el" d="M50 18C48 14 44 8 50 5C56 8 52 14 50 18Z" fill="#FBBF24" opacity="0"/>
+    <circle class="ghost-fire-glow" cx="50" cy="12" r="0" fill="#F97316" opacity="0"/>
+    <path class="ghost-body" d="M25 45C25 31.1929 36.1929 20 50 20C63.8071 20 75 31.1929 75 45V85C75 87.7614 72.7614 90 70 90C67.2386 90 65 87.7614 65 85C65 82.2386 62.7614 80 60 80C57.2386 80 55 82.2386 55 85C55 87.7614 52.7614 90 50 90C47.2386 90 45 87.7614 45 85C45 82.2386 42.7614 80 40 80C37.2386 80 35 82.2386 35 85C35 87.7614 32.7614 90 30 90C27.2386 90 25 87.7614 25 85V45Z"
+      stroke="#5B21B6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="rgba(91,33,182,0.04)"/>
+    <circle class="ghost-eye-l" cx="40" cy="44" r="4" fill="#5B21B6"/>
+    <circle class="ghost-eye-r" cx="60" cy="44" r="4" fill="#5B21B6"/>
+    <circle class="ghost-pupil-l" cx="42" cy="44" r="1.8" fill="#FFFFFF"/>
+    <circle class="ghost-pupil-r" cx="62" cy="44" r="1.8" fill="#FFFFFF"/>
+    <path class="ghost-brow-l" d="M34 37C37 35 40 35 44 38" stroke="#5B21B6" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path class="ghost-brow-r" d="M56 38C60 35 63 35 66 37" stroke="#5B21B6" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path class="ghost-smirk" d="M40 54C44 58 50 59 56 57" stroke="#5B21B6" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+  </svg>
+</template>
+
+<div class="flex flex-col h-screen w-full">
+
+  <!-- HEADER (Top Bar) -->
+  <header class="flex items-center justify-between px-6 h-16 w-full flex-shrink-0 bg-[#2D2D2D]/80 backdrop-blur-lg border-b border-gray-700/60 z-10">
+
+    <!-- Left: ZeroCopies + tagline -->
+    <div class="flex items-baseline gap-3">
+      <div class="flex flex-col">
+        <span class="font-bold text-xl md:text-2xl tracking-tight" style="color:#5B21B6;font-family:'Space Grotesk',sans-serif;">ZeroCopies</span>
+        <span class="italic font-light text-xs tracking-tight" style="color:#9CA3AF;">literally zero-copies</span>
+      </div>
+    </div>
+
+    <!-- Right: inference Z1 + logo circle -->
+    <div class="flex items-center gap-5">
+      <div class="flex items-baseline gap-1.5">
+        <span class="font-[200] text-lg md:text-xl tracking-tight" style="color:#9CA3AF;">inference</span>
+        <span class="font-bold text-xl md:text-2xl tracking-tighter" style="background:linear-gradient(135deg,#5B21B6,#7C3AED);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:'Space Grotesk',sans-serif;">Z1</span>
+      </div>
+
+      <button class="relative group" id="ghost-status-btn" title="Click to pin app">
+        <div class="w-9 h-9 rounded-full overflow-hidden border-2 border-gray-600 bg-[#374151] transition-all duration-300 flex items-center justify-center" id="logo-ring">
+          <img src="/logo.png" alt="Z1" class="w-full h-full object-cover" style="clip-path:circle(50%);"/>
+        </div>
+      </button>
+    </div>
+  </header>
+
+  <!-- CHAT AREA -->
+  <main class="flex-1 flex flex-col min-h-0 overflow-hidden" style="background:#2D2D2D;">
+
+    <!-- CHAT MESSAGES -->
+    <section id="screen-chat" class="screen flex-1 flex-col min-h-0">
+      <div class="flex-1 overflow-y-auto min-h-0 px-4 py-4" id="chat-scroll">
+        <div class="max-w-3xl mx-auto space-y-4" id="chat-thread">
+        </div>
+      </div>
+
+      <!-- INPUT ZONE -->
+      <div class="flex-shrink-0 px-4 pb-4 pt-2">
+        <div class="max-w-3xl mx-auto space-y-2">
+
+          <!-- White pill input -->
+          <div class="flex items-center gap-2 bg-[#374151] rounded-full px-4 py-2.5 shadow-[0_2px_12px_rgba(0,0,0,0.2)] border border-gray-600">
+            <button class="flex items-center justify-center w-7 h-7 rounded-full border border-gray-500 text-gray-400 hover:text-purple-300 hover:border-purple-400 transition-all flex-shrink-0" id="btn-attach" title="Attach file">
+              <span class="material-symbols-outlined text-[16px]">add</span>
+            </button>
+            <textarea class="flex-1 bg-transparent border-none focus:ring-0 text-sm font-semibold text-gray-100 py-1 resize-none outline-none placeholder:text-gray-500" id="chat-input" placeholder="Message ZeroCopies…" rows="1" style="min-height:28px;max-height:80px;"></textarea>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <button class="flex items-center justify-center w-7 h-7 rounded-full bg-red-400 text-white transition-all hidden" id="btn-stop" title="Stop">
+                <span class="material-symbols-outlined text-[16px]">stop</span>
+              </button>
+              <button class="flex items-center justify-center px-4 h-8 rounded-full font-semibold text-sm text-white transition-all active:scale-95" id="send-btn" style="background:#22C55E;">
+                <span>Send</span>
+                <span class="material-symbols-outlined text-[16px] ml-1">north_east</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Model loading bar (8px bold) -->
+          <div class="h-2 w-full rounded-full overflow-hidden bg-gray-700 hidden" id="load-progress-track">
+            <div class="h-full w-0 rounded-full loading-bar-fill transition-all duration-300" id="load-progress-bar"></div>
+          </div>
+          <div class="text-xs font-semibold text-center transition-all" id="load-status-text" style="color:#5B21B6;display:none;"></div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- EMPTY SCREEN -->
+    <section id="screen-empty" class="screen active flex-1 flex-col items-center justify-center px-4">
+      <div class="max-w-sm w-full text-center flex flex-col items-center">
+        <div class="mb-5">
+          <div class="w-28 h-28 flex items-center justify-center rounded-full border-2 border-purple-500 bg-[#374151]/60 backdrop-blur-sm">
+            <div class="w-[72px] h-[72px] ghost-levitate" data-ghost></div>
+          </div>
+        </div>
+        <h1 class="text-xl font-semibold mb-1" style="color:#E9D5FF;">
+          zero <span style="color:#FBCFE8;">copies</span>
+        </h1>
+        <p class="text-sm mb-5 max-w-[260px]" style="color:#9CA3AF;">
+          No model loaded. Pick a <span style="color:#22C55E;">.gguf</span> file.
+        </p>
+        <button class="px-6 py-2.5 rounded-full font-semibold text-sm text-white transition-all active:scale-95 shadow-md" id="load-model-btn-empty" style="background:linear-gradient(135deg,#5B21B6,#7C3AED);">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-[16px]">add_box</span>
+            <span>Load a model</span>
+          </div>
+        </button>
+      </div>
+    </section>
+
+    <!-- LOADING SCREEN -->
+    <section id="screen-loading" class="screen flex-col items-center justify-center px-4">
+      <div class="max-w-sm w-full text-center flex flex-col items-center">
+        <div class="w-16 h-16 flex items-center justify-center rounded-full border-2 border-purple-500 bg-[#374151]/60 backdrop-blur-sm mb-4">
+          <div class="w-10 h-10 ghost-levitate" data-ghost></div>
+        </div>
+        <h2 class="text-base font-semibold mb-3" style="color:#E9D5FF;">Mapping model into memory&hellip;</h2>
+        <div class="w-full bg-[#374151]/80 border border-gray-600 rounded-xl p-4 text-left font-mono text-xs space-y-1 shadow-sm" id="load-log" style="color:#9CA3AF;">
+          <div>$ awaiting selection&hellip;</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MODELS SCREEN -->
+    <section id="screen-models" class="screen flex-1 flex-col items-center justify-center px-4">
+      <div class="max-w-md w-full space-y-5 text-center">
+        <h2 class="text-lg font-semibold flex items-center gap-2 justify-center" style="color:#E9D5FF;">
+          <span class="material-symbols-outlined text-[22px]">memory</span><span>Models</span>
+        </h2>
+        <p class="text-sm" style="color:#9CA3AF;">Load a GGUF model for local inference.</p>
+        <button class="px-5 py-2 rounded-full font-semibold text-sm text-white transition-all active:scale-95 shadow-md" id="load-model-btn-models" style="background:linear-gradient(135deg,#5B21B6,#7C3AED);">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-[16px]">add_box</span><span>Load a model</span>
+          </div>
+        </button>
+        <div class="bg-[#374151]/80 border border-gray-600 rounded-xl p-4 text-xs shadow-sm" id="model-info" style="color:#9CA3AF;">
+          <p>No model loaded.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- HARDWARE SCREEN -->
+    <section id="screen-hardware" class="screen flex-1 flex-col items-center justify-center px-4">
+      <div class="max-w-md w-full space-y-5">
+        <h2 class="text-lg font-semibold flex items-center gap-2 justify-center" style="color:#E9D5FF;">
+          <span class="material-symbols-outlined text-[22px]">monitoring</span><span>Hardware</span>
+        </h2>
+        <div class="bg-[#374151]/80 border border-gray-600 rounded-xl p-4 space-y-2.5 text-xs shadow-sm">
+          <div class="flex justify-between"><span style="color:#9CA3AF;">Platform</span><span id="hw-platform" class="font-semibold" style="color:#E5E7EB;">detecting&hellip;</span></div>
+          <div class="flex justify-between"><span style="color:#9CA3AF;">CPU cores</span><span id="hw-cpus" class="font-semibold" style="color:#E5E7EB;">detecting&hellip;</span></div>
+          <div class="flex justify-between"><span style="color:#9CA3AF;">Memory</span><span id="hw-mem" class="font-semibold" style="color:#E5E7EB;">detecting&hellip;</span></div>
+          <div class="flex justify-between"><span style="color:#9CA3AF;">Model</span><span id="hw-model" class="font-semibold" style="color:#E5E7EB;">none loaded</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TERMINAL SCREEN -->
+    <section id="screen-terminal" class="screen flex-1 flex-col items-center justify-center px-4">
+      <div class="max-w-lg w-full space-y-3 pt-6">
+        <h2 class="text-lg font-semibold flex items-center gap-2" style="color:#E9D5FF;">
+          <span class="material-symbols-outlined text-[22px]">terminal</span><span>Terminal</span>
+        </h2>
+        <div class="bg-[#374151]/80 border border-gray-600 rounded-xl p-4 h-40 overflow-y-auto font-mono text-xs space-y-1 shadow-sm" id="terminal-log" style="color:#9CA3AF;">
+          <div>$ ZeroCopies ready</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS SCREEN -->
+    <section id="screen-settings" class="screen flex-1 flex-col items-center justify-center px-4">
+      <div class="max-w-md w-full space-y-5">
+        <h2 class="text-lg font-semibold flex items-center gap-2 justify-center" style="color:#E9D5FF;">
+          <span class="material-symbols-outlined text-[22px]">settings</span><span>Settings</span>
+        </h2>
+        <div class="bg-[#374151]/80 border border-gray-600 rounded-xl p-4 space-y-4 shadow-sm">
+          <div><label class="text-[10px] font-semibold uppercase tracking-widest block mb-1" style="color:#9CA3AF;">Context length</label><input type="range" min="1024" max="32768" value="4096" class="w-full accent-purple-600"/></div>
+          <div><label class="text-[10px] font-semibold uppercase tracking-widest block mb-1" style="color:#9CA3AF;">Temperature</label><input type="range" min="0" max="2" step="0.1" value="0.7" class="w-full accent-purple-600"/></div>
+          <div><label class="text-[10px] font-semibold uppercase tracking-widest block mb-1" style="color:#9CA3AF;">Max tokens</label><input type="range" min="64" max="4096" step="64" value="512" class="w-full accent-purple-600"/></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- STATUS BAR -->
+  <footer class="h-7 px-6 flex items-center justify-between bg-[#2D2D2D]/80 backdrop-blur-sm border-t border-gray-700/50 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-1.5">
+        <span class="w-1.5 h-1.5 rounded-full" id="footer-dot" style="background:#9CA3AF"></span>
+        <span class="font-mono text-[10px]" style="color:#9CA3AF;" id="footer-status">Offline</span>
+      </div>
+      <span class="font-mono text-[10px]" style="color:#6B7280;">v1.0.4</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <button class="text-gray-500 hover:text-purple-300 transition-colors" id="btn-terminal" title="Terminal">
+        <span class="material-symbols-outlined text-[14px]">terminal</span>
+      </button>
+      <button class="text-gray-500 hover:text-purple-300 transition-colors" id="btn-settings" title="Settings">
+        <span class="material-symbols-outlined text-[14px]">settings</span>
+      </button>
+    </div>
+  </footer>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

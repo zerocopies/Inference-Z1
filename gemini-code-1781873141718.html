@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>inference Z1</title>
+<style>
+  @font-face {
+    font-family: 'JetBrains Mono';
+    src: local('JetBrains Mono'), local('JetBrainsMono-Regular');
+    font-weight: 400;
+  }
+  @font-face {
+    font-family: 'JetBrains Mono';
+    src: local('JetBrains Mono Bold'), local('JetBrainsMono-Bold');
+    font-weight: 700;
+  }
+</style>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  /* ── Ground-Up Reworked Color Palette (Celeste, White & Slate Grays) ── */
+  :root {
+    --celeste: #8eedf7;        /* Celestial Blue */
+    --white: #FFFFFF;          /* Clear White Titles */
+    --green: #00FF41;          /* Status Connected Green */
+    --yellow: #FFEA00;         /* Shockwave Crown Yellow */
+    --bg-dark: #090A0C;        /* Pitch Base Obsidian */
+    
+    /* Structural Gray Matrix */
+    --gray-base: #12141C;      /* Main Panel Card Gray */
+    --gray-surface: #1A1D26;   /* Input Field Gray */
+    --gray-border: #2E3440;    /* Muted Border Frame Gray */
+    --gray-light: #D8DEE9;     /* Readable Gray Body Text */
+    --gray-muted: #64748B;     /* Subdued Subtitle Gray */
+  }
+  
+  html, body { height: 100%; background: var(--bg-dark); color: var(--gray-light); font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+  ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: var(--bg-dark); } ::-webkit-scrollbar-thumb { background: var(--gray-border); }
+  a { color: var(--celeste); text-decoration: none; }
+
+  /* ── Advanced Typography Classes ── */
+  .brand-lowercase { font-size: 11px; font-weight: 400; text-transform: lowercase; color: var(--gray-muted); letter-spacing: 0.5px; }
+  .brand-massive-z { font-size: 22px; font-weight: 700; color: var(--celeste); margin-left: 4px; vertical-align: middle; }
+  .brand-sub-1 { font-size: 14px; font-weight: 700; color: var(--white); vertical-align: middle; }
+
+  /* ── Rebuilt Vector Mascot (Larger, Cuter Ghost) ── */
+  .ghost-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .cute-ghost { width: 28px; height: 28px; }
+  .cute-ghost .ghost-body { fill: none; stroke: var(--celeste); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .cute-ghost .ghost-eyes { fill: var(--celeste); }
+  .cute-ghost .electric-crown { display: none; stroke: var(--yellow); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Network Spark Trigger Rules */
+  .ghost-icon.state-online .cute-ghost .electric-crown { display: block; transform-origin: center; animation: crackle 0.3s infinite alternate; }
+  .ghost-icon.state-online .cute-ghost .ghost-body { filter: drop-shadow(0 0 6px var(--celeste)); }
+
+  @keyframes crackle {
+    0% { opacity: 0.8; stroke-width: 1.8; }
+    100% { opacity: 1; stroke-width: 2.5; filter: drop-shadow(0 0 4px var(--yellow)); }
+  }
+
+  /* TOP BAR LAYOUT */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 56px; border-bottom: 1px solid var(--gray-border); background: var(--gray-base); position: sticky; top: 0; z-index: 100; }
+  .topbar-logo { display: flex; align-items: center; gap: 10px; }
+  .topbar-status { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--gray-muted); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: all 0.3s; }
+  .status-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+  /* STRUCTURAL BODY PANELS */
+  .layout { display: flex; height: calc(100vh - 56px); }
+  .sidebar { width: 220px; flex-shrink: 0; border-right: 1px solid var(--gray-border); background: var(--bg-dark); display: flex; flex-direction: column; padding: 16px 0; }
+  .nav-section { padding: 0 16px 8px; font-size: 10px; color: var(--gray-muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 12px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; cursor: pointer; color: var(--gray-muted); border-left: 2px solid transparent; transition: all 0.15s; font-size: 12px; }
+  .nav-item:hover { color: var(--celeste); background: var(--gray-base); }
+  .nav-item.active { color: var(--celeste); border-left-color: var(--celeste); background: rgba(142,237,247,0.03); font-weight: 700; }
+  .nav-item .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--gray-border); }
+  .nav-item.active .dot { background: var(--celeste); box-shadow: 0 0 4px var(--celeste); }
+
+  .main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg-dark); }
+  .panel { display: none; flex-direction: column; flex: 1; padding: 28px; }
+  .panel.active { display: flex; }
+  
+  .panel-title { font-size: 20px; font-weight: 700; color: var(--white); display: flex; align-items: center; gap: 12px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--gray-border); }
+
+  /* OVERVIEW COMPONENTS */
+  .hero-card { background: var(--gray-base); border: 1px solid var(--gray-border); padding: 20px; margin-bottom: 24px; line-height: 1.8; color: var(--gray-light); }
+  .hero-card code { color: var(--celeste); background: var(--bg-dark); padding: 2px 6px; border: 1px solid var(--gray-border); font-size: 12px; }
+  
+  .cmd-row { display: flex; background: var(--gray-surface); border: 1px solid var(--gray-border); margin-bottom: 28px; align-items: center; }
+  .cmd-input { flex: 1; padding: 12px 16px; font-family: monospace; color: var(--white); }
+  .cmd-input span { color: var(--gray-muted); margin-right: 6px; }
+  
+  /* Split Architecture Layout Grid (Rebalanced) */
+  .split-deck { display: grid; grid-template-columns: 1.2r 1fr; gap: 24px; margin-bottom: 28px; }
+  .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .data-card { background: var(--gray-base); border: 1px solid var(--gray-border); padding: 16px; }
+  .data-card-lbl { font-size: 10px; color: var(--gray-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .data-card-val { font-size: 14px; font-weight: 700; color: var(--white); }
+  .data-card-val.active-blue { color: var(--celeste); }
+
+  /* Clean Gray Requirements Matrix */
+  .spec-table { width: 100%; border-collapse: collapse; border: 1px solid var(--gray-border); background: var(--gray-base); }
+  .spec-table th { text-align: left; padding: 12px; font-size: 10px; text-transform: uppercase; color: var(--gray-muted); border-bottom: 1px solid var(--gray-border); background: var(--gray-surface); }
+  .spec-table td { padding: 12px; border-bottom: 1px solid var(--gray-border); color: var(--gray-light); }
+  .spec-table td:nth-child(3) { color: var(--celeste); font-weight: 700; }
+
+  /* CONSOLE DECK */
+  .console-layout { display: flex; gap: 20px; flex: 1; overflow: hidden; }
+  .console-settings { width: 260px; background: var(--gray-base); border: 1px solid var(--gray-border); padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .chat-panel { flex: 1; border: 1px solid var(--gray-border); background: var(--gray-base); display: flex; flex-direction: column; }
+  .chat-scroller { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  
+  .msg-node { display: flex; flex-direction: column; gap: 4px; }
+  .msg-node .role-tag { font-size: 10px; text-transform: uppercase; color: var(--gray-muted); font-weight: 700; }
+  .msg-node.assistant .role-tag { color: var(--celeste); }
+  .msg-node .text-content { font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+  
+  .chat-box-row { display: flex; border-top: 1px solid var(--gray-border); padding: 12px; background: var(--gray-surface); gap: 12px; }
+  .chat-box-row textarea { flex: 1; background: var(--bg-dark); border: 1px solid var(--gray-border); color: var(--white); padding: 10px; resize: none; outline: none; font-family: monospace; }
+  
+  .action-btn { background: transparent; border: 1px solid var(--celeste); color: var(--celeste); font-family: monospace; font-size: 11px; padding: 10px 16px; cursor: pointer; font-weight: 700; text-transform: uppercase; }
+  .action-btn:hover { background: rgba(142,237,247,0.08); }
+  
+  .notif { position: fixed; bottom: 20px; right: 20px; background: var(--gray-base); border: 1px solid var(--red); color: var(--red); padding: 10px 16px; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+  .notif.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo">
+    <span class="ghost-icon">
+      <svg class="cute-ghost" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path class="electric-crown" d="M 15,35 L 28,12 L 40,28 L 50,5 L 60,30 L 72,10 L 85,35" />
+        <path class="ghost-body" d="M 20,82 L 20,45 A 30,30 0 0,1 80,45 L 80,82 L 70,72 L 60,82 L 50,72 L 40,82 L 30,72 Z" />
+        <circle class="ghost-eyes" cx="38" cy="46" r="5" />
+        <circle class="ghost-eyes" cx="62" cy="46" r="5" />
+      </svg>
+    </span>
+    <div style="margin-left:4px;">
+      <span class="brand-lowercase">inference</span><span class="brand-massive-z">Z</span><span class="brand-sub-1">1</span>
+    </div>
+  </div>
+  <div class="topbar-status">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">offline</span>
+  </div>
+</div>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="nav-section">Navigation</div>
+    <div class="nav-item active" data-panel="overview"><div class="dot"></div> Overview</div>
+    <div class="nav-item" data-panel="keys"><div class="dot"></div> API Keys</div>
+    <div class="nav-item" data-panel="console"><div class="dot"></div> Console</div>
+  </aside>
+
+  <div class="main">
+
+    <div class="panel active" id="panel-overview">
+      <div class="panel-title">
+        <span class="ghost-icon">
+          <svg class="cute-ghost" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path class="electric-crown" d="M 15,35 L 28,12 L 40,28 L 50,5 L 60,30 L 72,10 L 85,35" />
+            <path class="ghost-body" d="M 20,82 L 20,45 A 30,30 0 0,1 80,45 L 80,82 L 70,72 L 60,82 L 50,72 L 40,82 L 30,72 Z" />
+            <circle class="ghost-eyes" cx="38" cy="46" r="5" />
+            <circle class="ghost-eyes" cx="62" cy="46" r="5" />
+          </svg>
+        </span>
+        overview<span class="blink">_</span>
+      </div>
+      
+      <div class="hero-card">
+        Inference Z1 operates as an on-metal, zero-copy architecture processing layer. It maps an OpenAI-compatible <code>/v1/chat/completions</code> service terminal locally at <code>127.0.0.1:7474</code>. All contextual parameters reside inside completely localized environment rings.
+      </div>
+
+      <div class="cmd-row">
+        <div class="cmd-input"><span>$</span>curl -sSL https://get.z1.run | bash</div>
+        <button class="copy-btn" style="padding:14px 20px; background:transparent; border:none; border-left:1px solid var(--gray-border); color:var(--gray-muted); font-family:monospace; cursor:pointer;" onclick="navigator.clipboard.writeText('curl -sSL https://get.z1.run | bash')">[COPY]</button>
+      </div>
+
+      <div class="split-deck">
+        <div class="data-grid">
+          <div class="data-card"><div class="data-card-lbl">Service Node</div><div class="data-card-val active-blue">127.0.0.1:7474</div></div>
+          <div class="data-card"><div class="data-card-lbl">Protocol</div><div class="data-card-val">REST / IPC Bridge</div></div>
+          <div class="data-card"><div class="data-card-lbl">Privacy Profile</div><div class="data-card-val">Strict Sandbox</div></div>
+          <div class="data-card"><div class="data-card-lbl">Model Core</div><div class="data-card-val">Llama-3.1-8B</div></div>
+        </div>
+        
+        <table class="spec-table">
+          <thead><tr><th>Resource</th><th>Minimum</th><th>Target</th></tr></thead>
+          <tbody>
+            <tr><td>Kernel Space</td><td>Linux 5.10+</td><td>Ubuntu Core</td></tr>
+            <tr><td>System RAM</td><td>16 GB DDR4</td><td>64 GB LPDDR5</td></tr>
+            <tr><td>Storage Array</td><td>50 GB NVMe</td><td>1 TB Gen4</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-keys">
+      <div class="panel-title">key management_</div>
+      <div class="hero-card">Vault indices remain completely isolated inside browser memory profiles. Ring networks isolate routing vectors.</div>
+      <div class="add-key-form">
+        <input class="z1-input" id="keyName" type="text" placeholder="Key Configuration Identifier" style="padding:12px; background:var(--gray-base); border:1px solid var(--gray-border); color:var(--white); width:280px; font-family:monospace; margin-right:10px; outline:none;"/>
+        <button class="action-btn" onclick="notify('Vault transactions restricted to direct IPC parameters')">[initialize key token]</button>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-console">
+      <div class="panel-title">compute workspace_</div>
+      <div class="console-layout">
+        <div class="console-settings">
+          <div class="config-label">Sampling Weight</div>
+          <input type="range" id="cfgTemp" min="0" max="2" step="0.1" value="0.7"/>
+          <div class="config-label">Token Limit Allocation</div>
+          <input type="range" id="cfgMaxTok" min="64" max="4096" step="64" value="512"/>
+        </div>
+        <div class="chat-panel">
+          <div class="chat-scroller" id="chatMessages">
+            <div class="msg-node"><div class="role-tag">system</div><div class="text-content">FFI Zero-Copy Matrix Compute Graph Initialized. Core Ready.</div></div>
+          </div>
+          <div class="chat-box-row">
+            <textarea id="chatInput" rows="1" placeholder="Issue calculation prompt target..."></textarea>
+            <button class="action-btn" id="sendBtn" onclick="sendMessage()">[compute]</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="notif" id="notif"></div>
+
+<script>
+  // Panel Routing Mechanics
+  function switchPanel(name) {
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.panel === name));
+    document.querySelectorAll('.panel').forEach(el => el.classList.toggle('active', el.id === 'panel-' + name));
+  }
+  document.querySelectorAll('.nav-item[data-panel]').forEach(el => {
+    el.addEventListener('click', () => switchPanel(el.dataset.panel));
+  });
+
+  // Heartbeat Scanners
+  async function checkEngineHeartbeat() {
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+    const icons = document.querySelectorAll('.ghost-icon');
+    try {
+      const res = await fetch('http://127.0.0.1:7474/', { signal: AbortSignal.timeout(2000) });
+      if (res.ok) {
+        dot.className = 'status-dot online';
+        txt.textContent = 'online';
+        icons.forEach(el => el.classList.add('state-online'));
+      }
+    } catch {
+      dot.className = 'status-dot';
+      txt.textContent = 'offline';
+      icons.forEach(el => el.classList.remove('state-online'));
+    }
+  }
+  setInterval(checkEngineHeartbeat, 4000);
+  setTimeout(checkEngineHeartbeat, 500);
+
+  // Command Execution Bridge
+  async function sendMessage() {
+    const input = document.getElementById('chatInput');
+    const text = input.value.trim();
+    if (!text) return;
+
+    input.value = '';
+    appendMsgNode('user', text);
+    
+    const sendBtn = document.getElementById('sendBtn');
+    sendBtn.disabled = true;
+
+    try {
+      const reply = await window.__TAURI__.core.invoke("chat_inference", {
+        prompt: text,
+        systemPrompt: "You are a capability optimized model core.",
+        temperature: parseFloat(document.getElementById('cfgTemp').value),
+        maxTokens: parseInt(document.getElementById('cfgMaxTok').value)
+      });
+      appendMsgNode('assistant', reply);
+    } catch (err) {
+      appendMsgNode('system-msg', "Matrix compilation failure: " + err);
+    }
+    sendBtn.disabled = false;
+  }
+
+  function appendMsgNode(role, text) {
+    const scroller = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = 'msg-node ' + role;
+    div.innerHTML = `<div class="role-tag">${role === 'user' ? 'you' : role === 'assistant' ? 'z1' : 'error'}</div><div class="text-content">${text}</div>`;
+    scroller.appendChild(div);
+    scroller.scrollTop = scroller.scrollHeight;
+  }
+
+  function notify(msg) {
+    const el = document.getElementById('notif');
+    el.textContent = msg; el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 3000);
+  }
+</script>
+</body>
+</html>

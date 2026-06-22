@@ -1,0 +1,78 @@
+Z1 WEB VERSION — SETUP
+
+Two pieces: a Rust HTTP server (your real Z1 engine, exposed over
+localhost) and a plain HTML page (any browser, no Tauri).
+
+──────────────────────────────────────────
+STEP 1 — Add the server as a new binary
+──────────────────────────────────────────
+
+1. Copy z1-server.rs into:
+   ~/Inference-Z1/z1-core/src/bin/z1-server.rs
+
+   (create the `bin` folder if it doesn't exist:
+    mkdir -p ~/Inference-Z1/z1-core/src/bin)
+
+2. Confirm z1-core's Cargo.toml has these dependencies — add any
+   that are missing:
+
+   tiny_http = "0.12.0"
+   serde = { version = "1", features = ["derive"] }
+   serde_json = "1.0"
+   anyhow = "1.0"
+   env_logger = "0.11"
+
+   (tiny_http and serde_json were already in your workspace from
+   earlier — this just confirms z1-core itself can see them, since
+   bin/ targets use the same Cargo.toml as the main z1 library.)
+
+──────────────────────────────────────────
+STEP 2 — Build and run the server
+──────────────────────────────────────────
+
+cd ~/Inference-Z1/z1-core
+cargo run --release --bin z1-server
+
+You should see:
+  [System] Listening on http://127.0.0.1:7474
+
+Leave this terminal running. This IS your Z1 engine now, listening
+for any browser tab to talk to it.
+
+──────────────────────────────────────────
+STEP 3 — Open the web page
+──────────────────────────────────────────
+
+In a second terminal:
+
+cd ~/Inference-Z1/z1-desktop   (or wherever you save z1-web.html)
+python3 -m http.server 8080
+
+Then open in any browser:
+  http://localhost:8080/z1-web.html
+
+(Opening the HTML file directly via double-click / file:// may also
+work, but some browsers block fetch() from file:// pages — the
+python http.server approach avoids that entirely.)
+
+──────────────────────────────────────────
+STEP 4 — Use it
+──────────────────────────────────────────
+
+1. Paste the FULL path to your .gguf file in the text box
+   (e.g. /home/prubbs/ai_playground/models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf)
+2. Click "Load model"
+3. Chat normally once it transitions to the chat screen
+
+──────────────────────────────────────────
+HONEST NOTES
+──────────────────────────────────────────
+
+- This server has NO authentication and NO network restriction beyond
+  binding to 127.0.0.1 (localhost only) — fine for personal local use,
+  NOT something to expose on a network or the internet as-is.
+- Only one model can be loaded at a time, same as the desktop app.
+- Session memory (sliding-window KV cache) works the same as before —
+  confirmed logic, just reached over HTTP instead of Tauri IPC.
+- This is a separate binary from z1-desktop — building/running one
+  does not affect the other. You can keep both working in parallel.

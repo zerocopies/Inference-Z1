@@ -1,179 +1,167 @@
-# Inference Z1
+Z3 Quantum-Flow
 
-**A from-scratch, zero-copy LLM inference engine in Rust.**
+A literally zero-copy local LLM inference engine — built from scratch in Rust.
 
-Built and benchmarked on a 2014 ThinkPad X240 (8 GB RAM, no GPU). Runs Llama 3.1 8B (Q4_K_M quantized) with a persistent decode graph and a hand-rolled KV cache.
+Z3 Quantum-Flow is a custom inference engine for running quantized large language models locally, with no dependency on llama.cpp's high-level API. It implements its own compute graph, KV cache management, batched prefill, and autoregressive decode loop directly on top of ggml primitives.
 
-Part of the **Zero Copies** project.
+Built and maintained by [Zero Copies](https://github.com/zerocopies) — engineered for resource-constrained hardware without compromising on correctness.
 
----
+What makes it different
 
-## What this is
+Most local inference tools are wrappers around llama.cpp. Z3 Quantum-Flow is not. It owns its entire forward pass — from GGUF weight loading through memory-mapped tensors, to the compute graph, KV cache, and token sampling. Every component was designed, reviewed, and hardened through multiple iterations.
 
-Inference Z1 loads a GGUF model file by memory-mapping it directly into ggml tensors — the 4.5 GiB of model weights are **never copied onto the heap**. The forward pass is a hand-built ggml compute graph (Q/K/V projections, RoPE, GQA attention, SwiGLU FFN, lm_head) with no dependency on `llama_decode` or the high-level llama.cpp API.
+Key design decisions:
 
-On top of that:
-
-- **A persistent decode graph** — built once, reused for every generated token. No per-token graph rebuild or reallocation.
-- **A real KV cache** — F32, allocated in a backend buffer, written via `ggml_cpy` on prefill and `ggml_backend_tensor_set` on decode. Attention reads the full cached history through `ggml_view_2d`.
-- **Multi-turn chat** — the KV cache persists across conversation turns. Follow-up messages append to existing context instead of re-running the whole conversation from scratch.
-- **A correctness-gated dev harness** — `--bench` runs a regression check ("does it actually say Paris?") before reporting any speed numbers.
-
----
-
-## Performance
-
-Measured on a ThinkPad X240 (Intel i5-4300U, 8 GB RAM, 2 physical cores), Llama 3.1 8B Instruct, Q4_K_M quantization, 2 threads:
-
-| Stage | Result |
-|---|---|
-| Correctness | "The capital of France is" → **Paris** ✓ |
-| Decode speed | **~1.6–1.75 tok/s**, sustained across 100+ tokens |
-| Context window | 512 tokens |
-
-The journey to get here:
-
-```
-No KV cache, full re-prefill every token:        ~0.05 tok/s
-+ KV cache (cache history, no graph reuse):       0.13 tok/s   (2.6x)
-+ Persistent decode graph (no per-token rebuild): 1.6  tok/s   (12x)
-+ 2-thread tuning (vs 1 or 4):                     1.75 tok/s   (best on this CPU)
-```
-
-That's a **~32x speedup** from architecture alone — no hardware change, no different quantization.
-
-Why 2 threads beats 4 on this CPU: the workload is memory-bandwidth bound, not compute bound. The X240 has 2 physical cores with hyperthreading; the extra hyperthreads contend for the same memory bus and make things slightly *worse*. Your mileage will vary by CPU — run `--bench` to find your machine's sweet spot.
-
----
-
-## Prerequisites
-
-- **Rust** (stable) — install via [rustup](https://rustup.rs)
-- **A C compiler** (`gcc` or `clang`) — needed to compile the vendored ggml C sources. On Debian/Ubuntu: `sudo apt install build-essential`. On macOS: Xcode Command Line Tools (`xcode-select --install`).
-- **A GGUF model file** — this project was built and tested against `Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf`. Model files are large (~4.5 GiB) and not included in this repo. Download from Hugging Face, e.g.:
-  ```
-  https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF
-  ```
-  (look for the `Q4_K_M` quantization). Any Llama 3.1 8B Instruct GGUF in `Q4_K_M` should work; other quantizations of the same model will also load but haven't been benchmarked here.
-
----
-
-## Building
-
-Requires Rust (stable) and a C/C++ toolchain (the vendored ggml/llama.cpp C sources are compiled as part of the build).
-
-```bash
-git clone <this repo>
-cd inference-z1
-cargo build --release
-```
-
-First build compiles the vendored ggml C sources and can take several minutes. Subsequent builds (Rust-only changes) are fast (~10-30s).
-
-You'll need a GGUF model file. This project was built and tested against:
-
-```
-Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf
-```
-
-Place it anywhere and point `-m` at it.
-
----
-
-## Usage
-
-### Single-shot prompt
-```bash
-./target/release/z1 -m model.gguf -p "Explain how zero-copy memory mapping works." -n 100
-```
-
-### Interactive chat (multi-turn, persistent context)
-```bash
-./target/release/z1 -m model.gguf --chat
-```
-
-Conversation history is held in the KV cache across turns — follow-up questions can reference earlier messages. The cache holds 512 tokens; use `/reset` to start a new conversation, or `/quit` / `/exit` to leave.
-
-### Dev harness / benchmark
-```bash
-./target/release/z1 -m model.gguf --bench
-```
-
-Runs a correctness regression (checks the model says "Paris" to a factual prompt at low temperature) followed by a 3-run decode-speed benchmark. If the regression fails, the benchmark is skipped — there's no point measuring the speed of a broken forward pass.
-
-### Options
-```
--m, --model <path>       Path to GGUF model file
--p, --prompt <text>      Single-shot prompt (non-interactive)
--c, --chat                Interactive multi-turn chat
--b, --bench               Run dev harness (regression + speed)
--n, --max-tokens <N>      Maximum tokens to generate  [default: 512]
--t, --temperature <f>     Sampling temperature        [default: 0.7]
-    --top-p <f>           Nucleus sampling threshold  [default: 0.9]
-    --no-template         Skip the Llama 3.1 chat template wrapping
--h, --help                Print help
-```
-
-### Debugging
-Set `Z1_TRACE=1` to print per-token diagnostics (KV cache head position, mask state, argmax logits at each step):
-
-```bash
-Z1_TRACE=1 ./target/release/z1 -m model.gguf -p "hi" -n 5
-```
+- **Zero-copy weight loading** — model weights are memory-mapped directly from disk. No heap allocation for weights, ever. The engine wraps the mmap base pointer in a ggml backend buffer.
+- **Quantum-KV cache** — a single contiguous backend-allocated buffer for all layers. K and V tensors for each layer are views into this buffer at fixed offsets. Zero-copy writes via `ggml_cpy` into view slices — no round-trip through host memory during decode.
+- **Batched prefill** — all prompt tokens processed in a single graph pass with a causal mask. One gallocr plan regardless of prompt length.
+- **Per-token decode** — single-token autoregressive decode with graph rebuild per step. View offsets for KV writes are baked in at build time.
+- **Sliding window session manager** — when context fills, drops oldest turns and re-prefills from the system prompt, seamlessly.
 
 ---
 
 ## Architecture
 
 ```
-gguf.rs      → parse GGUF header (metadata, tensor descriptors), no weight loading
-loader.rs    → memory-map the model file, wrap as ggml CPU backend buffer,
-               point tensors directly into the mmap (zero heap copies for weights)
-graph.rs     → the forward pass: hyperparameters, KV cache, persistent decode
-               graph, prefill (full-prompt) and decode_one (single-token)
-logits.rs    → final RMS-norm, lm_head projection, temperature/top-p/top-k sampling
-tokenizer.rs → BPE tokenizer built from GGUF vocab tables
-generate.rs  → autoregressive generation loop, chat templating, multi-turn sessions
-main.rs      → CLI entry point: --prompt, --chat, --bench
+GGUF file (mmap)
+     │
+     ▼
+MappedModel (zero-copy weight tensors)
+     │
+     ▼
+ForwardPass (Z3 Quantum-Flow Engine)
+  ├── ModelDNA        — hyperparameters from GGUF metadata
+  ├── QuantumKV       — contiguous KV cache, view-based writes
+  ├── build_prefill_graph()  — batched N-token graph
+  ├── build_graph()          — single-token decode graph
+  └── cleanup_graph_resources() — single-point teardown
+     │
+     ▼
+generate.rs (sliding window session + sampling)
+     │
+     ▼
+qflow binary / qflow-server HTTP API
 ```
-
-### Why "zero-copy"
-
-A typical loader reads the GGUF file into a `Vec<u8>` (or several), then copies tensor data out of that buffer into the format the inference library expects — doubling (or more) the memory footprint of the model.
-
-Inference Z1 instead:
-
-1. `mmap`s the GGUF file directly (`MAP_PRIVATE`)
-2. Wraps that mapping as a ggml CPU backend buffer (`ggml_backend_cpu_buffer_from_ptr`)
-3. Creates ggml tensor descriptors whose `data` pointers point **directly into the mmap**
-
-The OS page cache does the heavy lifting — pages are loaded from disk on first access and can be evicted under memory pressure without Inference Z1 ever having made its own copy.
-
-### Why the persistent decode graph matters
-
-Naively, each generated token requires: build a ggml compute graph for the whole model → allocate working memory for every intermediate tensor (`gallocr`) → run the graph → free everything → repeat. For a 32-layer model, that's a lot of repeated setup for a single token.
-
-Inference Z1 builds the decode graph **once**, with the KV cache and a fixed-size attention mask wired in as persistent input tensors. Each subsequent token just updates three small tensors (the new token ID, its position, and the attention mask) and re-runs the same graph. This eliminated the dominant per-token overhead and was the single largest performance win in this project (0.13 → 1.6 tok/s).
 
 ---
 
-## Known limitations
+## Performance
 
-- **Llama 3.1 architecture only.** Other architectures (Mistral, etc.) will load but produce poor output — the tokenizer and RoPE/attention parameters are tuned for Llama 3.1's GQA layout.
-- **512-token context window.** Chosen to fit comfortably in 8 GB RAM alongside the model weights. Increasing this is a one-line change (`KVCache::new(..., n_ctx)`) at the cost of more RAM for the cache.
-- **CPU-only.** No GPU backend. This is by design — the goal is good performance on modest, GPU-less hardware.
-- Single conversation thread — the KV cache holds one conversation at a time.
+Tested on a ThinkPad X240 (Intel Core i5-4300U, 8GB RAM, SSD) — 12-year-old hardware.
+
+| Model | Prefill | Decode | Context |
+|-------|---------|--------|---------|
+| Llama 3.1 8B Q4_K_M | ~11s / 28 tokens | **1.49 tok/s** | 512 |
+
+> Metrics table will be expanded with Phi-3-mini and Qwen2.5-Coder results.
+
+**Improvement over initial Z1 baseline:**
+- Prefill: 32,911ms → 11,309ms (**3x faster**) after batched prefill
+- Decode: 0.83 → 1.49 tok/s (**1.8x faster**) after graph correctness fixes
+
+---
+
+## Models supported
+
+| Model | Status |
+|-------|--------|
+| Llama 3.1 8B (Q4_K_M) | ✅ Working |
+| Qwen2.5-Coder 1.5B / 3B | 🔧 In progress (QKV bias + GQA fix needed) |
+| Phi-3-mini | 🔧 In progress (fused QKV split needed) |
+
+---
+
+## Getting started
+
+**Requirements:**
+- Rust 1.75+
+- Linux (tested on Linux Mint)
+- A GGUF model file
+
+**Build:**
+```bash
+git clone https://github.com/zerocopies/Z3-Quantum-Flow
+cd Z3-Quantum-Flow/z1-core
+cargo build --release --bin qflow
+```
+
+**Run:**
+```bash
+# Default 512 context
+./target/release/qflow /path/to/model.gguf
+
+# Custom context size
+Z1_CTX_SIZE=2048 ./target/release/qflow /path/to/model.gguf
+```
+
+**Commands inside the chat:**
+```
+/reset   — clear conversation memory and KV cache
+/exit    — quit
+```
+
+---
+
+## HTTP server
+
+Z3 Quantum-Flow also ships a standalone HTTP inference server:
+
+```bash
+cargo build --release --bin qflow-server
+./target/release/qflow-server
+```
+
+Endpoints:
+```
+GET  /health          — liveness check
+POST /load_model      — load a GGUF file
+POST /chat            — run inference, returns text + stats
+```
+
+Compatible with the included `z1-web.html` browser UI.
+
+---
+
+## Project structure
+
+```
+Z3-Quantum-Flow/
+├── z1-core/
+│   ├── src/
+│   │   ├── graph.rs       — Z3 Quantum-Flow engine (ForwardPass)
+│   │   ├── generate.rs    — autoregressive loop + sliding window session
+│   │   ├── loader.rs      — GGUF loader + zero-copy mmap
+│   │   ├── mapper.rs      — memory mapper
+│   │   ├── tokenizer.rs   — BPE tokenizer from GGUF metadata
+│   │   ├── logits.rs      — sampling (temperature, top-p, repetition penalty)
+│   │   ├── gguf.rs        — GGUF format parser
+│   │   ├── ggml_ffi.rs    — raw ggml bindings
+│   │   └── bin/
+│   │       └── z1-server.rs  — HTTP inference server
+│   └── Cargo.toml
+├── ZeroCopies/            — Tauri desktop UI (in development)
+├── z1-web.html            — browser chat UI
+└── README.md
+```
+
+---
+
+## Roadmap
+
+- [ ] Phi-3 fused QKV support
+- [ ] Qwen2.5 QKV bias + GQA broadcasting
+- [ ] Buzz Router — governance and multi-model routing layer
+- [ ] NEXUS — multi-agent coordination system
+- [ ] Batched decode (multiple sequences)
+- [ ] Used-context attention optimization (attend to head, not full n_ctx)
+- [ ] Context size CLI argument
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
-This project vendors ggml/llama.cpp (unmodified, tag b3534) for the underlying tensor operations and C build — also MIT licensed, with full attribution in the LICENSE file. Inference Z1's own Rust code (loader, graph construction, KV cache, tokenizer, generation loop, CLI, dev harness) is original work.
+Apache 2.0 — see [LICENSE](LICENSE)
 
 ---
 
-## Project context
-
-Inference Z1 is the reference engine of **Zero Copies** — built incrementally, with every architectural decision measured against real numbers on real (modest) hardware. The philosophy: understand every layer, measure everything, and let the numbers tell the story.
+*Part of the Zero Copies product family — building AI infrastructure for the real world.*

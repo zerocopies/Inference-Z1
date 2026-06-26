@@ -136,7 +136,7 @@ impl ChatTemplate {
                 // Qwen2 template: <|im_start|>system\n{content}<|im_end|>\n
                 let mut sys = Vec::new();
                 sys.extend_from_slice(&tok.encode_no_bos("<|im_start|>system\n"));
-                sys.extend_from_slice(&tok.encode_no_bos("You are a helpful AI assistant."));
+                sys.extend_from_slice(&tok.encode_no_bos("You are Z3, a helpful AI assistant built by Zero Copies. You are running on Z3-Quantum-Flow, a custom inference engine."));
                 sys.extend_from_slice(&tok.encode_no_bos("<|im_end|>\n"));
                 sys
             }

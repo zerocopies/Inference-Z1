@@ -206,7 +206,7 @@ impl Tokenizer {
         if entry.token_type == 3 { return None; }
         let s = String::from_utf8_lossy(&entry.text).into_owned();
         // GPT-2 style: 'Ġ' (U+0120) represents a leading space
-        Some(s.replace('\u{0120}', " ").replace('\u{010a}', "\n"))
+        Some(s.replace('\u{0120}', " ").replace('\u{010a}', "\n").replace('\u{2581}', " "))
     }
 
     pub fn is_eos(&self, id: u32) -> bool { id == TOKEN_EOS || id == TOKEN_EOT }

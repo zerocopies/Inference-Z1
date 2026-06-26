@@ -17,7 +17,7 @@
 }
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--on);
   font-family:'Geist','Inter',system-ui,sans-serif}
-.app{display:grid;grid-template-columns:var(--sidebar) 1fr var(--rail);height:100vh}
+.app{display:grid;grid-template-columns:var(--sidebar) 1fr var(--rail);height:100vh;position:relative}
 
 /* SIDEBAR */
 .sidebar{background:var(--surface);border-right:1px solid var(--outline);display:flex;flex-direction:column;overflow:hidden}
@@ -199,6 +199,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--on);
 .model-state{display:flex;align-items:center;justify-content:space-between;margin:6px 12px 12px;padding:9px 12px;background:var(--surface-mid);border-radius:var(--r-sm);border:1px solid var(--outline)}
 .ms-label{font-family:'Geist Mono',monospace;font-size:9px;color:var(--on-faint);text-transform:uppercase;letter-spacing:.8px}
 .ms-val{font-family:'Geist Mono',monospace;font-size:10px;font-weight:500;color:var(--blue);letter-spacing:.5px}
+
+.drag-handle{width:4px;cursor:col-resize;background:transparent;position:relative;z-index:10;flex-shrink:0;transition:background .15s}
+.drag-handle:hover,.drag-handle.dragging{background:var(--blue)}
 </style>
 </head>
 <body>
@@ -236,7 +239,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--on);
       Settings
     </div>
   </div>
-</aside>
+</aside><div class="drag-handle" id="leftHandle"></div>
 
 <!-- CANVAS -->
 <main class="canvas">
@@ -294,7 +297,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--on);
     </div>
   </div>
   <div class="status-bar">NO NETWORK CALLS &nbsp;·&nbsp; RESPONSES GENERATED ON-DEVICE &nbsp;·&nbsp; NOTHING LOGGED</div>
-</main>
+</main><div class="drag-handle" id="rightHandle"></div>
 
 <!-- RIGHT RAIL -->
 <aside class="rail">
@@ -722,6 +725,51 @@ renderHist(); renderMsgs(); updateTelemetry();
 setInterval(updateTelemetry,3000);
 // Init mini val
 document.getElementById('miniVal').textContent=CTXS[ctxIdx];
+
+// ── Resizable panels ──
+(function(){
+  function makeDraggable(handleId, getCol, setCol){
+    const handle = document.getElementById(handleId);
+    if(!handle) return;
+    let dragging = false;
+    handle.addEventListener('mousedown', e => {
+      dragging = true;
+      handle.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+      if(!dragging) return;
+      setCol(e.clientX);
+    });
+    document.addEventListener('mouseup', () => {
+      if(!dragging) return;
+      dragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+  }
+  const app = document.querySelector('.app');
+  makeDraggable('leftHandle',
+    () => {},
+    (x) => {
+      const w = Math.max(160, Math.min(400, x));
+      const cols = app.style.gridTemplateColumns.split(' ');
+      app.style.gridTemplateColumns = w+'px '+cols[1]+' '+cols[2];
+    }
+  );
+  makeDraggable('rightHandle',
+    () => {},
+    (x) => {
+      const total = app.offsetWidth;
+      const w = Math.max(220, Math.min(480, total - x));
+      const cols = app.style.gridTemplateColumns.split(' ');
+      app.style.gridTemplateColumns = cols[0]+' '+cols[1]+' '+w+'px';
+    }
+  );
+})();
 </script>
 </body>
 </html>

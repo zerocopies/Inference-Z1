@@ -69,7 +69,7 @@ struct LoadResponse { model_name: String }
 struct ChatRequest { prompt: String }
 
 #[derive(Serialize)]
-struct ChatResponse { text: String, stats: String }
+struct ChatResponse { text: String, stats: String, tokens_per_second: f64 }
 
 #[derive(Serialize)]
 struct ErrorResponse { error: String }
@@ -299,6 +299,7 @@ fn main() {
                         let resp = ChatResponse {
                             text,
                             stats: format!("{} tokens · {:.2} tok/s", stats.generated_tokens, stats.tokens_per_second()),
+                            tokens_per_second: stats.tokens_per_second(),
                         };
                         let _ = request.respond(json_response(serde_json::to_string(&resp).unwrap(), 200));
                     }
@@ -307,6 +308,61 @@ fn main() {
                             serde_json::to_string(&ErrorResponse{error: e.to_string()}).unwrap(), 500));
                     }
                 }
+            }
+
+            (Method::Get, "/") | (Method::Get, "/z3-ui.html") => {
+                let html_path = std::path::Path::new("z3-ui.html");
+                match std::fs::read_to_string(html_path) {
+                    Ok(html) => {
+                        let _ = request.respond(
+                            Response::from_string(html)
+                                .with_status_code(200)
+                                .with_header(Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap())
+                                .with_header(cors_header())
+                        );
+                    }
+                    Err(_) => {
+                        let _ = request.respond(json_response(
+                            serde_json::to_string(&ErrorResponse{error: "z3-ui.html not found in current directory".to_string()}).unwrap(), 404));
+                    }
+                }
+            }
+
+            (Method::Get, "/stats") => {
+                let cpu_pct = std::fs::read_to_string("/proc/stat").ok()
+                    .and_then(|s| {
+                        let line = s.lines().next()?;
+                        let nums: Vec<u64> = line.split_whitespace().skip(1)
+                            .filter_map(|x| x.parse().ok()).collect();
+                        if nums.len() < 4 { return None; }
+                        let total: u64 = nums.iter().sum();
+                        let idle = nums[3];
+                        Some(if total > 0 { (total - idle) as f64 / total as f64 * 100.0 } else { 0.0 })
+                    }).unwrap_or(0.0);
+
+                let (ram_used, ram_total) = std::fs::read_to_string("/proc/meminfo").ok()
+                    .map(|s| {
+                        let mut total = 0u64; let mut free = 0u64; let mut buffers = 0u64; let mut cached = 0u64;
+                        for line in s.lines() {
+                            let parts: Vec<&str> = line.split_whitespace().collect();
+                            if parts.len() >= 2 {
+                                let val: u64 = parts[1].parse().unwrap_or(0);
+                                match parts[0] {
+                                    "MemTotal:" => total = val,
+                                    "MemFree:" => free = val,
+                                    "Buffers:" => buffers = val,
+                                    "Cached:" => cached = val,
+                                    _ => {}
+                                }
+                            }
+                        }
+                        let used = total.saturating_sub(free + buffers + cached);
+                        (used as f64 / 1024.0 / 1024.0, total as f64 / 1024.0 / 1024.0)
+                    }).unwrap_or((0.0, 8.0));
+
+                let body = format!(r#"{{"cpu_pct":{:.1},"ram_used_gb":{:.2},"ram_total_gb":{:.1}}}"#,
+                    cpu_pct, ram_used, ram_total);
+                let _ = request.respond(json_response(body, 200));
             }
 
             _ => {
